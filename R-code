@@ -1,0 +1,72 @@
+library(Seurat)
+library(cowplot)
+library(gplots)
+library(ggplot2)
+library(dplyr)
+
+s1900612.data <- Read10X(data.dir = "D:/outs-1900612-human-reference/filtered_feature_bc_matrix/")
+rownames(x = s1900612.data[["Antibody Capture"]]) <- gsub(pattern = "_[control_]*TotalA", replacement = "", 
+                                                         x = rownames(x = s1900612.data[["Antibody Capture"]]))
+
+s1900612 <- CreateSeuratObject(counts = s1900612.data[["Gene Expression"]], min.cells = 3, min.features = 200)
+s1900612 <- NormalizeData(s1900612)
+s1900612[["ADT"]] <- CreateAssayObject(s1900612.data[["Antibody Capture"]][, colnames(x = s1900612)])
+s1900612 <- NormalizeData(s1900612, assay = "ADT", normalization.method = "CLR")
+
+# standard log-normalization
+s1900612 <- NormalizeData(s1900612)
+
+# choose ~1k variable features
+s1900612 <- FindVariableFeatures(s1900612)
+
+# standard scaling (no regression)
+s1900612 <- ScaleData(s1900612)
+
+# Run PCA, select 13 PCs for tSNE visualization and graph-based clustering
+s1900612 <- RunPCA(s1900612, verbose = FALSE)
+ElbowPlot(s1900612, ndims = 50)
+
+s1900612 <- FindNeighbors(s1900612, dims = 1:25)
+s1900612 <- FindClusters(s1900612, resolution = 0.2)
+s1900612 <- RunTSNE(s1900612, dims = 1:25, method = "FIt-SNE")
+DimPlot(s1900612, reduction = "tsne")
+DimPlot(s1900612, label = TRUE) + NoLegend()
+
+saveRDS(s1900612, file="D:/1900612-Seurat-human-reference/s1900612.Rds")
+
+##Cluster Markers
+for (i in 0:10){
+  marker_i <- FindMarkers(s1900612, ident.1 = i, verbose =TRUE)
+  tab  <- paste0("Cluster", " ", i)
+  write.xlsx(marker_i, file = "D:/1900612-Seurat-human-reference/FindMarker.xlsx", sheetName = tab, append = TRUE)
+}
+
+
+##Plots
+s19006120 <- ScaleData(s1900612, assay = "ADT")
+
+PCAPlot(s1900612, pt.size = 0.5)
+
+FeaturePlot(s1900612, features = c("adt_CD3", "adt_CD4", "adt_CD8", "adt_CD45RO", "adt_CD45RA","adt_CD69"), min.cutoff = "q05", max.cutoff = "q95", ncol = 3)
+FeaturePlot(s1900612, features = c("adt_CD197", "adt_CD196", "adt_CD25", "adt_CD127", "adt_CD161", "adt_CD195"), min.cutoff = "q05", max.cutoff = "q95", ncol = 3)
+FeaturePlot(s1900612, features = c("adt_CD294", "adt_CD19","adt_CD21","adt_CD56","adt_HLA-DR", "adt_CD14"), min.cutoff = "q05", max.cutoff = "q95", ncol = 3)
+FeaturePlot(s1900612, features = c("adt_CD80","adt_CD123", "adt_CD1c", "adt_CD141", "adt_CD207", "adt_CD11c"), min.cutoff = "q05", max.cutoff = "q95", ncol = 3)
+
+RidgePlot(s1900612, features = c("adt_CD3", "adt_CD4", "adt_CD8", "adt_CD45RO", "adt_CD45RA","adt_CD69"),ncol = 2)
+RidgePlot(s1900612, features = c("adt_CD197", "adt_CD196", "adt_CD25", "adt_CD127", "adt_CD161", "adt_CD195"),ncol = 2)
+RidgePlot(s1900612, features = c("adt_CD294", "adt_CD19","adt_CD21","adt_CD56","adt_HLA-DR", "adt_CD14"),ncol = 2)
+RidgePlot(s1900612, features = c("adt_CD80","adt_CD123", "adt_CD1c", "adt_CD141", "adt_CD207", "adt_CD11c"),ncol = 2)
+
+FeatureScatter(s1900612, feature1 = "adt_CD14", feature2 = "adt_HLA-DR")
+FeatureScatter(s1900612, feature1 = "adt_CD3", feature2 = "adt_CD4")
+FeatureScatter(s1900612, feature1 = "adt_CD3", feature2 = "adt_CD8")
+FeatureScatter(s1900612, feature1 = "adt_CD4", feature2 = "adt_CD8")
+FeatureScatter(s1900612, feature1 = "adt_CD45RO", feature2 = "adt_CD45RA")
+
+# Downsample the clusters to a maximum of 300 cells each (makes the heatmap easier to see for
+# small clusters)
+s1900612.small <- subset(s1900612, downsample = 300)
+
+# Find protein markers for all clusters, and draw a heatmap
+adt.markers <- FindAllMarkers(s1900612.small, assay = "ADT", only.pos = TRUE)
+DoHeatmap(s1900612.small, features = unique(adt.markers$gene), assay = "ADT", angle = 90) + NoLegend()
